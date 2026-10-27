@@ -61,11 +61,25 @@ Results at commit `82043bb`: 41 test functions (44 cases with parameters), all p
 | 1.51, 2.7 | Page basics: language, viewport, skip link, labelled fields (plus the scan below) | `test_req_2_7_and_1_51_page_basics_for_accessibility` | pass |
 | 1.58, 1.59, 1.61 | Map window, OpenStreetMap base layer, controls laid over the map | `test_req_1_58_1_59_1_61_map_window_base_layer_and_controls_over_the_map` | pass |
 | 1.62 | The administrator sets colour, line width and point size per spatial dataset | `test_req_1_62_admin_sets_colour_line_width_and_point_size` | pass |
-| 1.63.5 | External WMS or WMTS layer added from the map (page wiring tested; live draw is a browser check) | `test_req_1_63_5_external_wms_or_wmts_layer` | pass |
+| 1.63.5 | External WMS or WMTS layer added from the map. The test checks the page wiring; the browser check below drew a local stand-in WMS | `test_req_1_63_5_external_wms_or_wmts_layer` | pass |
 | 2.5 | Presentation, logic and storage separated: no SQL in the web layer, no web framework in logic or storage | `test_req_2_5_presentation_logic_and_storage_are_separate_layers` | pass |
 | 2.6 | Every interface string exists in Polish and English; another language is one more table | `test_req_2_6_every_string_in_every_language_and_unknown_languages_fall_back` | pass |
 | 2.10 | Session cookie HttpOnly, SameSite=Strict and Secure over HTTPS. The token is stored as a hash. Sign-out and expiry end it | `test_req_2_10_session_cookie_flags_sign_out_and_expiry` | pass |
 | Hardening | Security headers. Map data and pop-ups cannot carry script. Only web links render as links. Sample data is marked on every page | `test_security_headers_on_pages_api_and_catalog`<br>`test_map_data_and_popups_cannot_carry_script`<br>`test_links_and_document_addresses_only_render_web_links`<br>`test_sample_data_is_marked_synthetic_on_every_page` | pass |
+
+## Browser checks, 2026-10-27
+
+Run in Chromium 155 against a clean clone served on 127.0.0.1.
+
+- Accessibility: axe-core 4.14.0 with the WCAG 2.0 and 2.1 A and AA rules, on 12 pages (home, catalogue, the
+  three dataset pages, registration, sign-in, both statements, the English home page, and the signed-in account
+  and administration pages): 0 violations. On the map page axe asks for a human review of three items in the
+  map library's own controls and attribution over the tiles (colour contrast, zoom button names, attribution links).
+- What a scanner cannot check, still to do by hand: keyboard use of the map, screen-reader reading order and
+  announcements, and the clarity of texts and error messages.
+- Map: the spatial dataset draws its three points in the administrator's style over OpenStreetMap tiles, the layer
+  control sits over the map, and adding a WMS through it made the browser send GetMap requests for the chosen
+  layer in EPSG:3857 to a local stand-in service.
 
 ## Not in the model
 
