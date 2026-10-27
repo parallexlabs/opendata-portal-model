@@ -298,3 +298,44 @@ def user_keys(store: Store, user_id: int) -> list[dict]:
     with store.tx() as con:
         return [dict(r) for r in con.execute("SELECT key_hash, label, created_at, revoked_at FROM api_keys WHERE user_id=?",
                                               (user_id,))]
+
+
+# ---------- schedules, links and reports ----------
+
+def set_schedule(store: Store, ds_id: str, source_url: str, minutes: int | None) -> None:
+    """OPZ 1.29, 1.35: the administrator adds, changes or removes a dataset's source and its schedule."""
+    if source_url and not source_url.startswith(("https://", "http://")):
+        raise Refused("the source must be an http or https URL")
+    with store.tx() as con:
+        con.execute("UPDATE datasets SET source_url=?, schedule_minutes=? WHERE id=?",
+                    (source_url or None, minutes if source_url else None, ds_id))
+
+
+def add_link(store: Store, ds_id: str, title: str, url: str) -> None:
+    """OPZ 1.41, 1.42: supplementary material and URL links on a dataset."""
+    if not url.startswith(("https://", "http://", "/")):
+        raise Refused("enter a full URL")
+    with store.tx() as con:
+        con.execute("INSERT INTO links(dataset_id, title, url) VALUES (?,?,?)", (ds_id, title.strip()[:200], url))
+
+
+def log_download(store: Store, ds_id: str, fmt: str, keyed: bool) -> None:
+    with store.tx() as con:
+        con.execute("INSERT INTO downloads(dataset_id, at, format, keyed) VALUES (?,?,?,?)", (ds_id, now(), fmt, int(keyed)))
+
+
+def report(store: Store, start: str, end: str) -> list[dict]:
+    """OPZ 1.43: per dataset, for a day or a period (inclusive dates, UTC): downloads, keyed downloads,
+    imports, failed imports and new versions."""
+    lo, hi = start + "T00:00:00", end + "T23:59:59"
+    with store.tx() as con:
+        out = []
+        for d in con.execute("SELECT id, title FROM datasets ORDER BY title"):
+            q = lambda sql: con.execute(sql, (d["id"], lo, hi)).fetchone()[0]  # noqa: E731
+            out.append({"dataset": d["id"], "title": d["title"],
+                        "downloads": q("SELECT COUNT(*) FROM downloads WHERE dataset_id=? AND at BETWEEN ? AND ?"),
+                        "keyed_downloads": q("SELECT COUNT(*) FROM downloads WHERE dataset_id=? AND keyed=1 AND at BETWEEN ? AND ?"),
+                        "imports": q("SELECT COUNT(*) FROM imports WHERE dataset_id=? AND at BETWEEN ? AND ?"),
+                        "failed_imports": q("SELECT COUNT(*) FROM imports WHERE dataset_id=? AND ok=0 AND at BETWEEN ? AND ?"),
+                        "new_versions": q("SELECT COUNT(*) FROM versions WHERE dataset_id=? AND created_at BETWEEN ? AND ?")})
+        return out

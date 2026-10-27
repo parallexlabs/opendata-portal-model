@@ -289,3 +289,42 @@ def test_req_2_7_and_1_51_page_basics_for_accessibility(client):
             if input_id in ("website",):
                 continue
             assert f'for="{input_id}"' in html, f"{path}: #{input_id} has no label"
+
+
+def test_req_1_29_1_35_scheduled_update_from_the_source(app):
+    from portal import scheduler
+    store = app.state.store
+    service.set_schedule(store, BUDGET, "https://example.invalid/budget.csv", 60)
+    feed = {"body": b"area,year,amount_pln\nOswiata,2026,1\n"}
+    t0 = datetime.now(timezone.utc)
+    first = scheduler.run_due(store, fetch=lambda url: feed["body"], at=t0)
+    assert first[0]["ok"] and first[0]["version"] == 2
+    assert scheduler.run_due(store, fetch=lambda url: feed["body"], at=t0 + timedelta(minutes=5)) == [], "not due yet"
+    again = scheduler.run_due(store, fetch=lambda url: feed["body"], at=t0 + timedelta(minutes=61))
+    assert again[0].get("unchanged"), "an unchanged source makes no new version"
+    failed = scheduler.run_due(store, fetch=lambda url: (_ for _ in ()).throw(OSError("down")), at=t0 + timedelta(minutes=200))
+    assert not failed[0]["ok"] and "source unavailable" in failed[0]["errors"][0]["message"]
+    with pytest.raises(service.Refused):
+        service.set_schedule(store, BUDGET, "ftp://example.invalid/x.csv", 60)
+
+
+def test_req_1_41_1_42_links_and_supplementary_files(app):
+    c = admin_client(app, "internal")
+    c.post(f"/admin/dataset/{BUDGET}/link", data={"title": "Metodologia", "url": "https://example.invalid/metodologia"})
+    assert "Metodologia" in c.get(f"/datasets/{BUDGET}").text
+
+
+def test_req_1_43_report_for_a_day_or_a_period(app, client):
+    client.get(f"/api/1.0/datasets/{BUDGET}/data?format=csv")
+    client.get(f"/api/1.0/datasets/{BUDGET}/data?format=json")
+    c = admin_client(app)
+    today = datetime.now(timezone.utc).date().isoformat()
+    rows = list(csv.DictReader(io.StringIO(c.get(f"/admin/report.csv?start={today}&end={today}").text)))
+    budget = next(r for r in rows if r["dataset"] == BUDGET)
+    assert budget["downloads"] == "2" and budget["imports"] == "1" and budget["new_versions"] == "1"
+
+
+def test_req_1_50_accessibility_statement_and_privacy_policy(client):
+    assert "Deklaracja dostępności" in client.get("/deklaracja-dostepnosci").text
+    assert "Polityka prywatności" in client.get("/polityka-prywatnosci").text
+    assert "/deklaracja-dostepnosci" in client.get("/").text

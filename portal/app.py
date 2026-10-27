@@ -27,7 +27,7 @@ CATALOG_PUBLISHER = "Urząd Miejski (dane przykładowe)"
 
 
 def create_app(db_path: str | None = None, base_url: str = "http://127.0.0.1:8000", seed: bool = True,
-               rate: int = 30, per: float = 10.0, upload_dir: str | None = None) -> FastAPI:
+               rate: int = 30, per: float = 10.0, upload_dir: str | None = None, scheduler: bool = False) -> FastAPI:
     store = Store(db_path or os.environ.get("PORTAL_DB", str(HERE.parent / "data" / "portal.sqlite3")))
     if seed:
         from .seed import seed_if_empty
@@ -40,6 +40,9 @@ def create_app(db_path: str | None = None, base_url: str = "http://127.0.0.1:800
     app.state.store, app.state.base = store, base_url.rstrip("/")
     app.state.uploads = Path(upload_dir or os.environ.get("PORTAL_UPLOADS", str(HERE.parent / "data" / "uploads")))
     app.state.limiter = security.RateLimiter(rate=rate, per=per)
+    if scheduler:
+        from . import scheduler as sched
+        sched.start(store)
     templates = Jinja2Templates(directory=str(HERE / "templates"))
     app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
 
@@ -92,6 +95,7 @@ def create_app(db_path: str | None = None, base_url: str = "http://127.0.0.1:800
         if rows is None:
             raise HTTPException(404, "no such version")
         body, media = importers.render(rows, json.loads(d["schema_json"]), format)
+        service.log_download(store, ds_id, format, bool(request.headers.get("x-api-key")))
         return Response(body, media_type=media)
 
     app.include_router(api)
@@ -300,6 +304,45 @@ def create_app(db_path: str | None = None, base_url: str = "http://127.0.0.1:800
                      "document_url": document_url})
         result = service.import_rows(store, "uchwaly-rady-miejskiej", rows, mode="manual entry", source_format="form")
         return page(request, "import_result.html", ds_id="uchwaly-rady-miejskiej", result=result)
+
+    @app.post("/admin/dataset/{ds_id}/schedule", include_in_schema=False)
+    def admin_schedule(request: Request, ds_id: str, source_url: str = Form(""), minutes: int = Form(0)):
+        need(request, ("admin",))
+        service.set_schedule(store, ds_id, source_url.strip(), minutes or None)
+        return RedirectResponse("/admin", status_code=303)
+
+    @app.post("/admin/run-due", include_in_schema=False)
+    def admin_run_due(request: Request):
+        need(request, ("admin",))
+        from . import scheduler as sched
+        return JSONResponse({"runs": sched.run_due(store)})
+
+    @app.post("/admin/dataset/{ds_id}/link", include_in_schema=False)
+    def admin_link(request: Request, ds_id: str, title: str = Form(...), url: str = Form(...)):
+        need(request, ("admin", "internal"))
+        service.add_link(store, ds_id, title, url)
+        return RedirectResponse(f"/datasets/{ds_id}", status_code=303)
+
+    @app.get("/admin/report.csv", include_in_schema=False)
+    def admin_report(request: Request, start: str = Query(..., pattern=r"^\d{4}-\d{2}-\d{2}$"),
+                     end: str = Query(..., pattern=r"^\d{4}-\d{2}-\d{2}$")):
+        need(request, ("admin", "internal"))
+        rows = service.report(store, start, end)
+        import csv as _csv, io as _io
+        buf = _io.StringIO()
+        w = _csv.DictWriter(buf, fieldnames=list(rows[0]) if rows else ["dataset"], lineterminator="\n")
+        w.writeheader()
+        for r in rows:
+            w.writerow(r)
+        return Response(buf.getvalue(), media_type="text/csv; charset=utf-8")
+
+    @app.get("/deklaracja-dostepnosci", response_class=HTMLResponse, include_in_schema=False)
+    def accessibility_statement(request: Request):
+        return page(request, "statement.html", kind="accessibility")
+
+    @app.get("/polityka-prywatnosci", response_class=HTMLResponse, include_in_schema=False)
+    def privacy_policy(request: Request):
+        return page(request, "statement.html", kind="privacy")
 
     @app.post("/admin/resolutions/package", include_in_schema=False)
     async def admin_resolution_package(request: Request, file: UploadFile = File(...)):

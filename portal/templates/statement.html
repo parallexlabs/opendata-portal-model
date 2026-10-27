@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block main %}
+{% if kind == 'accessibility' %}
+<h1>Deklaracja dostępności (projekt)</h1>
+<p>Model portalu jest projektowany zgodnie z WCAG 2.1 na poziomie AA. Ostateczną treść deklaracji, zgodną z ustawą z dnia 4 kwietnia 2019 r. o dostępności cyfrowej, uzgadnia się z Zamawiającym przed wdrożeniem.</p>
+<p>Znane ograniczenia modelu: podkład mapowy pochodzi z zewnętrznego serwisu, a mapa ma tekstowy odpowiednik w tabeli danych; testy automatyczne nie zastępują testów z użytkownikami technologii asystujących.</p>
+{% else %}
+<h1>Polityka prywatności (projekt)</h1>
+<p>Model przetwarza wyłącznie dane kont: adres e-mail, imię i nazwisko, opcjonalnie organizację, skrót hasła, historię logowań i skróty kluczy API. Konto użytkownika z kluczem API można usunąć samodzielnie; usunięcie obejmuje klucze i sesje. Ostateczną treść uzgadnia się z Zamawiającym.</p>
+{% endif %}
+{% endblock %}

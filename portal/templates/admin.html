@@ -14,6 +14,10 @@
 <td><ul>{% for h in history[d.id] %}<li>{{ h.at[:16] }} · {{ h.mode }} · {{ 'OK' if h.ok else 'errors' }}{% if h.version_number %} · v{{ h.version_number }}{% endif %}{% if h.duplicate_of %} · duplicate of {{ h.duplicate_of }}{% endif %}</li>{% endfor %}</ul></td>
 {% if user.role == 'admin' %}<td><form method="post" action="/admin/dataset/{{ d.id }}/flags"><label><input type="checkbox" name="requires_key" value="1" {% if d.requires_key %}checked{% endif %}> {{ t('requires_key') }}</label><label><input type="checkbox" name="archived" value="1" {% if d.archived %}checked{% endif %}> archived</label><button type="submit">Save</button></form></td>{% endif %}</tr>{% endfor %}
 </tbody></table>
+<h2>Report (CSV)</h2>
+<form method="get" action="/admin/report.csv" class="form"><div><label for="r-start">From</label><input id="r-start" name="start" type="date" required></div><div><label for="r-end">To</label><input id="r-end" name="end" type="date" required></div><button type="submit">Report</button></form>
+<h2>Uchwały: pakiet (ZIP)</h2>
+<form method="post" action="/admin/resolutions/package" enctype="multipart/form-data" class="form"><div><label for="pkg">ZIP</label><input id="pkg" name="file" type="file" accept=".zip" required></div><button type="submit">Import</button></form>
 <h2>Uchwały: dodaj ręcznie</h2>
 <form method="post" action="/admin/resolutions" class="form">
   <div><label for="number">Numer</label><input id="number" name="number" required></div>
