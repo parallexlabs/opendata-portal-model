@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}{{ catalog_title }}{% endblock %}</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="alternate" type="text/turtle" href="/catalog.ttl" title="DCAT-AP-PL">
+{% block head %}{% endblock %}
+</head>
+<body>
+<a class="skip" href="#main">{{ t('skip') }}</a>
+<header class="top">
+  <p class="brand"><a href="/">{{ catalog_title }}</a></p>
+  <nav aria-label="Menu">
+    <ul>
+      <li><a href="/">{{ t('home') }}</a></li>
+      <li><a href="/datasets">{{ t('catalog') }}</a></li>
+      <li><a href="/api/docs">{{ t('api') }}</a></li>
+      {% if user %}
+        <li><a href="/account">{{ t('account') }}</a></li>
+        {% if user.role in ('admin', 'internal') %}<li><a href="/admin">{{ t('admin') }}</a></li>{% endif %}
+        <li><form method="post" action="/logout"><button type="submit" class="linklike">{{ t('logout') }}</button></form></li>
+      {% else %}
+        <li><a href="/login">{{ t('login') }}</a></li>
+        <li><a href="/register">{{ t('register') }}</a></li>
+      {% endif %}
+      <li><a href="?lang={{ 'en' if lang == 'pl' else 'pl' }}" lang="{{ 'en' if lang == 'pl' else 'pl' }}">{{ 'English' if lang == 'pl' else 'Polski' }}</a></li>
+    </ul>
+  </nav>
+</header>
+<p class="notice" role="note">{{ t('synthetic') }}</p>
+{% if announcement %}<p class="announce" role="status">{{ announcement }}</p>{% endif %}
+<main id="main" tabindex="-1">
+{% block main %}{% endblock %}
+</main>
+<footer><p><a href="/catalog.ttl">DCAT-AP-PL (Turtle)</a> · <a href="/catalog.rdf">RDF/XML</a> · <a href="/catalog.nt">N-Triples</a> · <a href="/catalog.jsonld">JSON-LD</a> · <a href="/api/openapi.json">OpenAPI</a></p></footer>
+</body>
+</html>

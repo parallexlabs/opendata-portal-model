@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}{{ t('catalog') }} · {{ catalog_title }}{% endblock %}
+{% block main %}
+<h1>{{ t('catalog') }}</h1>
+<form action="/datasets" method="get" class="filters" role="search">
+  <div><label for="q">{{ t('search_label') }}</label><input id="q" name="q" type="search" value="{{ q }}"></div>
+  {% if filters.category %}<div><label for="category">{{ t('category') }}</label><select id="category" name="category"><option value="">{{ t('any') }}</option>{% for c in categories %}<option value="{{ c }}" {% if sel.category == c %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></div>{% endif %}
+  {% if filters.publisher %}<div><label for="publisher">{{ t('publisher') }}</label><select id="publisher" name="publisher"><option value="">{{ t('any') }}</option>{% for p in publishers %}<option value="{{ p }}" {% if sel.publisher == p %}selected{% endif %}>{{ p }}</option>{% endfor %}</select></div>{% endif %}
+  {% if filters.keyword %}<div><label for="keyword">{{ t('keyword') }}</label><select id="keyword" name="keyword"><option value="">{{ t('any') }}</option>{% for k in keywords %}<option value="{{ k }}" {% if sel.keyword == k %}selected{% endif %}>{{ k }}</option>{% endfor %}</select></div>{% endif %}
+  <div><label for="sort">{{ t('sort') }}</label><select id="sort" name="sort">
+    <option value="title" {% if sort == 'title' %}selected{% endif %}>{{ t('sort_title') }}</option>
+    <option value="newest" {% if sort == 'newest' %}selected{% endif %}>{{ t('sort_newest') }}</option>
+    <option value="modified" {% if sort == 'modified' %}selected{% endif %}>{{ t('sort_modified') }}</option></select></div>
+  <button type="submit">{{ t('search') }}</button>
+</form>
+<h2 id="results">{{ t('results') }}: {{ datasets|length }}</h2>
+{% if not datasets %}<p>{{ t('no_results') }}</p>{% endif %}
+<ul class="cards" aria-labelledby="results">
+{% for d in datasets %}
+  <li><a href="/datasets/{{ d.id }}">{{ d.title }}</a>{% if d.requires_key %} <span class="tag">{{ t('requires_key') }}</span>{% endif %}<br>
+  <span class="meta">{{ d.publisher }} · {{ d.category }} · {{ d.modified_at[:10] }}</span><p>{{ d.description }}</p></li>
+{% endfor %}
+</ul>
+{% endblock %}

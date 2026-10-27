@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}{{ d.title }} · {{ catalog_title }}{% endblock %}
+{% block head %}{% if geojson %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+{% endif %}{% endblock %}
+{% block main %}
+<h1>{{ d.title }}</h1>
+{% if stale %}<p class="warn" role="status">{{ t('stale') }}</p>{% endif %}
+<p>{{ d.description }}</p>
+<h2>{{ t('metadata') }}</h2>
+<dl class="meta-list">
+  <dt>{{ t('publisher') }}</dt><dd>{{ d.publisher }}</dd>
+  <dt>{{ t('category') }}</dt><dd>{{ d.category }}</dd>
+  <dt>{{ t('keyword') }}</dt><dd>{{ keywords|join(', ') }}</dd>
+  <dt>{{ t('source') }}</dt><dd>{{ d.source }}</dd>
+  <dt>{{ t('licence') }}</dt><dd>{{ d.licence }}</dd>
+  <dt>{{ t('frequency') }}</dt><dd>{{ d.frequency }}</dd>
+  <dt>{{ t('modified') }}</dt><dd><time datetime="{{ d.modified_at }}">{{ d.modified_at[:16].replace('T', ' ') }}</time></dd>
+</dl>
+<h2>{{ t('download') }}</h2>
+<ul class="downloads">
+  {% for fmt in ['csv', 'json', 'xml'] + (['geojson'] if d.geo else []) %}
+  <li><a href="/api/1.0/datasets/{{ d.id }}/data?format={{ fmt }}">{{ fmt|upper }}</a></li>
+  {% endfor %}
+</ul>
+{% if d.requires_key %}<p class="tag">{{ t('requires_key') }}</p>{% endif %}
+{% if chart %}
+<h2>{{ t('chart') }}: {{ chart.field }}</h2>
+<figure>
+  <svg role="img" aria-labelledby="chart-title" viewBox="0 0 100 {{ chart.bars|length * 8 + 2 }}" class="chart" preserveAspectRatio="none">
+    <title id="chart-title">{{ chart.field }} / {{ chart.label }}</title>
+    {% for name, value, pct in chart.bars %}<rect x="0" y="{{ loop.index0 * 8 + 1 }}" width="{{ '%.2f'|format(pct) }}" height="6"><title>{{ name }}: {{ value }}</title></rect>{% endfor %}
+  </svg>
+  <figcaption>{{ chart.field }}: {% for name, value, pct in chart.bars %}{{ name }} {{ value }}{% if not loop.last %}; {% endif %}{% endfor %}</figcaption>
+</figure>
+{% endif %}
+{% if geojson %}
+<h2>{{ t('map') }}</h2>
+<div id="map" class="map" role="region" aria-label="{{ t('map') }}"></div>
+<form id="wms" class="wms"><label for="wms-url">WMS / WMTS URL</label><input id="wms-url" type="url" placeholder="https://.../wms"><label for="wms-layers">Layers</label><input id="wms-layers"><button type="submit">+</button></form>
+<script>
+  const data = {{ geojson|safe }};
+  const map = L.map('map');
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19, attribution: '&copy; OpenStreetMap contributors'}).addTo(map);
+  const layer = L.geoJSON(data, {pointToLayer: (f, ll) => L.circleMarker(ll, {radius: 7, color: '#0b5394', weight: 2}),
+    onEachFeature: (f, l) => l.bindPopup(Object.entries(f.properties).map(([k, v]) => k + ': ' + v).join('<br>'))}).addTo(map);
+  map.fitBounds(layer.getBounds(), {maxZoom: 13});
+  document.getElementById('wms').addEventListener('submit', (e) => { e.preventDefault();
+    const url = document.getElementById('wms-url').value; const layers = document.getElementById('wms-layers').value;
+    if (url) L.tileLayer.wms(url, {layers, format: 'image/png', transparent: true}).addTo(map); });
+</script>
+{% endif %}
+<h2>{{ t('preview') }} ({{ rows|length }} / {{ total }})</h2>
+<div class="table-wrap" tabindex="0" role="region" aria-label="{{ t('preview') }}">
+<table>
+  <thead><tr>{% for f in schema %}<th scope="col">{{ f.name }}</th>{% endfor %}</tr></thead>
+  <tbody>{% for r in rows %}<tr>{% for f in schema %}<td>{% if f.name == 'document_url' and r[f.name] %}<a href="{{ r[f.name] }}">PDF</a>{% else %}{{ r[f.name] if r[f.name] is not none else '' }}{% endif %}</td>{% endfor %}</tr>{% endfor %}</tbody>
+</table>
+</div>
+{% if links %}<h2>{{ t('links') }}</h2><ul>{% for l in links %}<li><a href="{{ l.url }}">{{ l.title }}</a></li>{% endfor %}</ul>{% endif %}
+<h2>{{ t('versions') }}</h2>
+<ul>{% for v in versions %}<li>v{{ v.number }} · {{ v.created_at[:16].replace('T', ' ') }} · <a href="/api/1.0/datasets/{{ d.id }}/data?format=csv&amp;version={{ v.number }}">CSV</a></li>{% endfor %}</ul>
+{% endblock %}

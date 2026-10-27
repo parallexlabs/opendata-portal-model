@@ -1,0 +1,21 @@
+:root { --fg: #1a1a1a; --bg: #ffffff; --accent: #0b5394; --muted: #555; --line: #c8c8c8; --warn: #7a4b00; --err: #a40000; --ok: #1d5e20; }
+* { box-sizing: border-box; }
+body { margin: 0; font: 1rem/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--fg); background: var(--bg); }
+a { color: var(--accent); } a:focus, button:focus, input:focus, select:focus, .table-wrap:focus { outline: 3px solid #f2a900; outline-offset: 2px; }
+.skip { position: absolute; left: -999px; top: 0; background: #fff; padding: .5rem; } .skip:focus { left: .5rem; }
+.top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; padding: .75rem 1rem; border-bottom: 1px solid var(--line); }
+.top ul { display: flex; flex-wrap: wrap; gap: .75rem; list-style: none; margin: 0; padding: 0; }
+.brand a { font-weight: 700; text-decoration: none; color: var(--fg); }
+main { max-width: 64rem; margin: 0 auto; padding: 1rem; }
+.notice, .announce { margin: 0; padding: .5rem 1rem; background: #eef3f8; } .announce { background: #fff4d6; }
+.cards { list-style: none; padding: 0; display: grid; gap: .75rem; } .cards li { border: 1px solid var(--line); padding: .75rem; border-radius: 4px; }
+.meta, .hint { color: var(--muted); font-size: .9rem; }
+.filters, .form { display: flex; flex-wrap: wrap; gap: .75rem; align-items: flex-end; } .form > div { display: flex; flex-direction: column; min-width: 14rem; }
+label { font-weight: 600; } input, select, button { font: inherit; padding: .4rem .5rem; }
+button { background: var(--accent); color: #fff; border: 0; border-radius: 3px; cursor: pointer; } .linklike { background: none; color: var(--accent); padding: 0; text-decoration: underline; }
+.table-wrap { overflow-x: auto; } table { border-collapse: collapse; width: 100%; } th, td { border: 1px solid var(--line); padding: .35rem .5rem; text-align: left; vertical-align: top; }
+.map { height: 22rem; border: 1px solid var(--line); } .chart { width: 100%; height: auto; max-height: 18rem; } .chart rect { fill: var(--accent); }
+.warn { color: var(--warn); } .error { color: var(--err); } .ok { color: var(--ok); } .tag { background: #eee; padding: 0 .4rem; border-radius: 3px; font-size: .85rem; }
+.hp { position: absolute; left: -10000px; } .inline { display: inline-flex; gap: .5rem; align-items: center; } .check { flex-direction: row !important; gap: .5rem; align-items: center; }
+footer { border-top: 1px solid var(--line); padding: 1rem; text-align: center; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

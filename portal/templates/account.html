@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}{{ t('account') }} · {{ catalog_title }}{% endblock %}
+{% block main %}
+<h1>{{ t('account') }}</h1>
+<p>{{ user.name }} · {{ user.email }} · {{ user.role }}</p>
+<h2>{{ t('api_keys') }}</h2>
+{% if new_key %}<p class="ok" role="status">{{ t('new_key') }}: <code>{{ new_key }}</code></p>{% endif %}
+<ul>{% for k in keys %}<li><code>{{ k.key_hash[:12] }}…</code> {{ k.label }} · {{ k.created_at[:10] }}{% if k.revoked_at %} · revoked{% else %}
+  <form method="post" action="/account/keys/revoke" class="inline"><input type="hidden" name="key_hash" value="{{ k.key_hash }}"><button type="submit">{{ t('revoke') }}</button></form>{% endif %}</li>{% endfor %}</ul>
+<form method="post" action="/account/keys" class="form inline"><label for="label">Label</label><input id="label" name="label"><button type="submit">{{ t('issue_key') }}</button></form>
+<h2>TOTP</h2>
+{% if totp_secret %}<p class="ok" role="status">Secret: <code>{{ totp_secret }}</code></p>{% endif %}
+<form method="post" action="/account/totp"><button type="submit">{{ t('enable_totp') }}</button></form>
+{% if user.role == 'apikey' %}
+<h2>{{ t('delete_account') }}</h2>
+<form method="post" action="/account/delete" class="form"><label for="confirm">DELETE</label><input id="confirm" name="confirm"><button type="submit">{{ t('delete_account') }}</button></form>
+{% endif %}
+{% endblock %}

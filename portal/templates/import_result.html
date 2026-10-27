@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block main %}
+<h1>Import: {{ ds_id }}</h1>
+{% if result.ok %}<p class="ok" role="status">OK{% if result.version %} · v{{ result.version }}{% endif %}{% if result.unchanged %} · unchanged{% endif %}{% if result.duplicate_of %} · duplicate of {{ result.duplicate_of }}{% endif %}</p>
+{% else %}<p class="error" role="alert">{{ result.errors|length }} error(s)</p>
+<table><thead><tr><th scope="col">Row</th><th scope="col">Field</th><th scope="col">Problem</th></tr></thead><tbody>
+{% for e in result.errors %}<tr><td>{{ e.row if e.row else '-' }}</td><td>{{ e.field or '-' }}</td><td>{{ e.message }}</td></tr>{% endfor %}</tbody></table>{% endif %}
+<p><a href="/admin">{{ t('admin') }}</a></p>
+{% endblock %}

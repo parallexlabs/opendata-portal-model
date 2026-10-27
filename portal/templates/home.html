@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block main %}
+<h1>{{ catalog_title }}</h1>
+<form role="search" action="/datasets" method="get" class="search">
+  <label for="q">{{ t('search_label') }}</label>
+  <input id="q" name="q" type="search">
+  <button type="submit">{{ t('search') }}</button>
+</form>
+<h2>{{ t('recent') }}</h2>
+<ul class="cards">
+{% for d in recent %}
+  <li><a href="/datasets/{{ d.id }}">{{ d.title }}</a><br><span class="meta">{{ d.publisher }} · {{ d.modified_at[:10] }}</span></li>
+{% endfor %}
+</ul>
+{% endblock %}

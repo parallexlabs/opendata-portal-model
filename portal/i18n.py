@@ -1,0 +1,56 @@
+"""Interface strings in Polish (default) and English. Another language is one more dictionary (OPZ 2.6)."""
+
+STRINGS = {
+    "pl": {
+        "skip": "Przejdź do treści", "home": "Strona główna", "catalog": "Katalog danych", "api": "API",
+        "login": "Zaloguj się", "logout": "Wyloguj się", "register": "Załóż konto", "account": "Moje konto",
+        "admin": "Panel administracyjny", "search": "Szukaj", "search_label": "Szukaj zbiorów danych",
+        "sort": "Sortuj", "sort_title": "Tytuł", "sort_newest": "Najnowsze", "sort_modified": "Ostatnio zmienione",
+        "category": "Kategoria", "publisher": "Dostawca", "keyword": "Słowo kluczowe", "any": "Dowolne",
+        "results": "Wyniki", "no_results": "Brak zbiorów spełniających kryteria.", "download": "Pobierz",
+        "versions": "Wersje", "preview": "Podgląd danych", "chart": "Wykres", "map": "Mapa", "metadata": "Metadane",
+        "recent": "Ostatnio aktualizowane zbiory", "synthetic": "Model demonstracyjny: wszystkie dane są przykładowe lub syntetyczne.",
+        "stale": "Uwaga: dane mogą być nieaktualne względem zadeklarowanej częstotliwości.",
+        "check_email": "Sprawdź skrzynkę e-mail: wysłaliśmy link aktywacyjny.",
+        "activated": "Konto zostało aktywowane. Możesz się zalogować.",
+        "activation_failed": "Link aktywacyjny jest nieprawidłowy lub wygasł.",
+        "login_failed": "Logowanie nieudane. Sprawdź dane i kod uwierzytelniający.",
+        "bot_refused": "Formularz odrzucony przez ochronę przed botami. Spróbuj ponownie.",
+        "email": "Adres e-mail", "name": "Imię i nazwisko", "organisation": "Organizacja (opcjonalnie)",
+        "password": "Hasło", "totp": "Kod z aplikacji uwierzytelniającej (jeśli włączony)",
+        "accept_terms": "Akceptuję regulamin korzystania z danych", "api_keys": "Klucze API",
+        "new_key": "Nowy klucz (widoczny tylko raz)", "issue_key": "Wygeneruj klucz", "revoke": "Unieważnij",
+        "enable_totp": "Włącz logowanie dwuskładnikowe (TOTP)", "delete_account": "Usuń konto",
+        "requires_key": "Wymaga klucza API", "formats": "Formaty", "language": "Język", "attachments": "Załączniki",
+        "links": "Odnośniki", "frequency": "Częstotliwość aktualizacji", "licence": "Licencja", "source": "Źródło",
+        "modified": "Ostatnia aktualizacja",
+    },
+    "en": {
+        "skip": "Skip to content", "home": "Home", "catalog": "Data catalog", "api": "API",
+        "login": "Sign in", "logout": "Sign out", "register": "Create an account", "account": "My account",
+        "admin": "Administration", "search": "Search", "search_label": "Search datasets",
+        "sort": "Sort", "sort_title": "Title", "sort_newest": "Newest", "sort_modified": "Recently changed",
+        "category": "Category", "publisher": "Publisher", "keyword": "Keyword", "any": "Any",
+        "results": "Results", "no_results": "No datasets match.", "download": "Download",
+        "versions": "Versions", "preview": "Data preview", "chart": "Chart", "map": "Map", "metadata": "Metadata",
+        "recent": "Recently updated datasets", "synthetic": "Demonstration model: all data is sample or synthetic.",
+        "stale": "Note: this data may be out of date for its stated update frequency.",
+        "check_email": "Check your e-mail: we sent an activation link.",
+        "activated": "Your account is active. You can sign in.",
+        "activation_failed": "The activation link is invalid or has expired.",
+        "login_failed": "Sign-in failed. Check your details and authenticator code.",
+        "bot_refused": "The form was refused by the bot protection. Please try again.",
+        "email": "E-mail address", "name": "Full name", "organisation": "Organisation (optional)",
+        "password": "Password", "totp": "Authenticator code (if enabled)",
+        "accept_terms": "I accept the data terms of use", "api_keys": "API keys",
+        "new_key": "New key (shown once)", "issue_key": "Create a key", "revoke": "Revoke",
+        "enable_totp": "Turn on two-factor sign-in (TOTP)", "delete_account": "Delete my account",
+        "requires_key": "Needs an API key", "formats": "Formats", "language": "Language", "attachments": "Attachments",
+        "links": "Links", "frequency": "Update frequency", "licence": "Licence", "source": "Source",
+        "modified": "Last updated",
+    },
+}
+
+
+def t(key: str, lang: str = "pl") -> str:
+    return STRINGS.get(lang, STRINGS["pl"]).get(key) or STRINGS["en"].get(key, key)
