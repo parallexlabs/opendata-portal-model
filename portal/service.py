@@ -203,6 +203,9 @@ def activate(store: Store, token: str) -> bool:
 
 
 def create_staff(store: Store, *, email: str, name: str, password: str, role: str) -> int:
+    problem = security.password_problem(password)
+    if problem:
+        raise Refused(f"password rule: {security.PASSWORD_RULE} ({problem})")
     with store.tx() as con:
         cur = con.execute("INSERT INTO users(email, name, organisation, password_hash, role, active, created_at)"
                           " VALUES (?,?,?,?,?,1,?)", (email.lower(), name, "", security.hash_password(password), role, now()))
