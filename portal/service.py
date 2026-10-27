@@ -5,10 +5,15 @@ from __future__ import annotations
 import json
 import re
 import unicodedata
-from datetime import datetime, timedelta, timezone
+import hashlib
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 
 from . import importers, security
 from .db import Store, now
+
+
+RESOLUTIONS = "uchwaly-rady-miejskiej"
 
 
 class Refused(ValueError):
@@ -319,6 +324,59 @@ def add_link(store: Store, ds_id: str, title: str, url: str) -> None:
         con.execute("INSERT INTO links(dataset_id, title, url) VALUES (?,?,?)", (ds_id, title.strip()[:200], url))
 
 
+def links(store: Store, ds_id: str) -> list[dict]:
+    with store.tx() as con:
+        return [dict(r) for r in con.execute("SELECT * FROM links WHERE dataset_id=? ORDER BY id", (ds_id,))]
+
+
+def attachments(store: Store, ds_id: str) -> list[dict]:
+    with store.tx() as con:
+        return [dict(r) for r in con.execute("SELECT * FROM attachments WHERE dataset_id=? ORDER BY id", (ds_id,))]
+
+
+def record_failed_import(store: Store, ds_id: str, mode: str, errors: list[dict]) -> None:
+    """OPZ 1.32, 1.33: a refused import stays in the history with its error report."""
+    with store.tx() as con:
+        con.execute("INSERT INTO imports(dataset_id, at, mode, ok, errors_json) VALUES (?,?,?,?,?)",
+                    (ds_id, now(), mode, 0, json.dumps(errors, ensure_ascii=False)))
+
+
+def import_resolution_package(store: Store, folder: Path, rows: list[dict], files: dict[str, bytes]) -> dict:
+    """OPZ 1.3, 1.65.4: store the PDF/A files of a resolutions package, link each from its record, and import
+    the records as a new version of the set."""
+    folder.mkdir(parents=True, exist_ok=True)
+    with store.tx() as con:
+        for number, data in files.items():
+            name = re.sub(r"[^A-Za-z0-9._-]+", "_", number) + ".pdf"
+            (folder / name).write_bytes(data)
+            url = f"/files/resolutions/{name}"
+            con.execute("INSERT INTO attachments(dataset_id, record_key, name, kind, url, sha256) VALUES (?,?,?,?,?,?)",
+                        (RESOLUTIONS, number, name, "PDF/A", url, hashlib.sha256(data).hexdigest()))
+            for r in rows:
+                if r.get("number") == number:
+                    r["document_url"] = url
+    return import_rows(store, RESOLUTIONS, rows, mode="package", source_format="zip")
+
+
+MAP_STYLE_DEFAULT = {"color": "#0b5394", "weight": 2, "radius": 7}
+
+
+def map_style(store: Store, ds_id: str) -> dict:
+    """OPZ 1.62: the drawing rules of a spatial dataset: colour, line width and point size."""
+    saved = store.setting(f"map_style:{ds_id}")
+    return MAP_STYLE_DEFAULT | (json.loads(saved) if saved else {})
+
+
+def set_map_style(store: Store, ds_id: str, *, color: str, weight: int, radius: int) -> None:
+    if get_dataset(store, ds_id) is None:
+        raise Refused("no such dataset")
+    if not re.fullmatch(r"#[0-9a-fA-F]{6}", color):
+        raise Refused("colour must be #RRGGBB")
+    if not (1 <= weight <= 10 and 2 <= radius <= 20):
+        raise Refused("line width 1 to 10 and point size 2 to 20")
+    store.set_setting(f"map_style:{ds_id}", json.dumps({"color": color.lower(), "weight": weight, "radius": radius}))
+
+
 def log_download(store: Store, ds_id: str, fmt: str, keyed: bool) -> None:
     with store.tx() as con:
         con.execute("INSERT INTO downloads(dataset_id, at, format, keyed) VALUES (?,?,?,?)", (ds_id, now(), fmt, int(keyed)))
@@ -327,15 +385,16 @@ def log_download(store: Store, ds_id: str, fmt: str, keyed: bool) -> None:
 def report(store: Store, start: str, end: str) -> list[dict]:
     """OPZ 1.43: per dataset, for a day or a period (inclusive dates, UTC): downloads, keyed downloads,
     imports, failed imports and new versions."""
-    lo, hi = start + "T00:00:00", end + "T23:59:59"
+    # Half-open window on the stored UTC times, so the last second of the end day is counted too.
+    lo, hi = start + "T00:00:00", (date.fromisoformat(end) + timedelta(days=1)).isoformat() + "T00:00:00"
     with store.tx() as con:
         out = []
         for d in con.execute("SELECT id, title FROM datasets ORDER BY title"):
             q = lambda sql: con.execute(sql, (d["id"], lo, hi)).fetchone()[0]  # noqa: E731
             out.append({"dataset": d["id"], "title": d["title"],
-                        "downloads": q("SELECT COUNT(*) FROM downloads WHERE dataset_id=? AND at BETWEEN ? AND ?"),
-                        "keyed_downloads": q("SELECT COUNT(*) FROM downloads WHERE dataset_id=? AND keyed=1 AND at BETWEEN ? AND ?"),
-                        "imports": q("SELECT COUNT(*) FROM imports WHERE dataset_id=? AND at BETWEEN ? AND ?"),
-                        "failed_imports": q("SELECT COUNT(*) FROM imports WHERE dataset_id=? AND ok=0 AND at BETWEEN ? AND ?"),
-                        "new_versions": q("SELECT COUNT(*) FROM versions WHERE dataset_id=? AND created_at BETWEEN ? AND ?")})
+                        "downloads": q("SELECT COUNT(*) FROM downloads WHERE dataset_id=? AND at >= ? AND at < ?"),
+                        "keyed_downloads": q("SELECT COUNT(*) FROM downloads WHERE dataset_id=? AND keyed=1 AND at >= ? AND at < ?"),
+                        "imports": q("SELECT COUNT(*) FROM imports WHERE dataset_id=? AND at >= ? AND at < ?"),
+                        "failed_imports": q("SELECT COUNT(*) FROM imports WHERE dataset_id=? AND ok=0 AND at >= ? AND at < ?"),
+                        "new_versions": q("SELECT COUNT(*) FROM versions WHERE dataset_id=? AND created_at >= ? AND created_at < ?")})
         return out

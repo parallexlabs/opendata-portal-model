@@ -5,7 +5,6 @@ Run: .venv/bin/uvicorn portal.app:app --reload   (data in ./data/portal.sqlite3;
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
@@ -17,13 +16,20 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from . import dcat, importers, security, service
-from .db import Store
-from .i18n import t
+from .db import Store, now
+from .i18n import STRINGS, t
 
 HERE = Path(__file__).parent
 API_VERSION = "1.0"
 CATALOG_TITLE = "Portal Otwartych Danych (model)"
 CATALOG_PUBLISHER = "Urząd Miejski (dane przykładowe)"
+SECURITY_HEADERS = {"X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY", "Referrer-Policy": "same-origin"}
+
+
+def safe_href(url) -> str:
+    """Only web links and paths on this site become links; anything else (javascript:, data:) is dropped."""
+    url = str(url or "").strip()
+    return url if url.startswith(("https://", "http://")) or (url.startswith("/") and not url.startswith("//")) else ""
 
 
 def create_app(db_path: str | None = None, base_url: str = "http://127.0.0.1:8000", seed: bool = True,
@@ -44,19 +50,24 @@ def create_app(db_path: str | None = None, base_url: str = "http://127.0.0.1:800
         from . import scheduler as sched
         sched.start(store)
     templates = Jinja2Templates(directory=str(HERE / "templates"))
+    templates.env.filters["href"] = safe_href
     app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
 
     @app.middleware("http")
     async def limit_api(request: Request, call_next):
         if request.url.path.startswith("/api/") and not request.url.path.startswith(("/api/docs", "/api/openapi")):
+            # A key earns its own bucket only when it is valid, so invented keys cannot dodge the address limit.
             key = request.headers.get("x-api-key")
-            client = ("key:" + security.token_hash(key)) if key else ("ip:" + (request.client.host if request.client else "?"))
+            known = bool(key) and service.key_user(store, key) is not None
+            client = ("key:" + security.token_hash(key)) if known else ("ip:" + (request.client.host if request.client else "?"))
             wait = app.state.limiter.check(client)
             if wait:
                 return JSONResponse({"error": "too many requests", "retry_after_s": round(wait, 1)}, status_code=429,
                                     headers={"Retry-After": str(max(1, int(wait + 0.999)))})
         response = await call_next(request)
         response.headers.setdefault("X-API-Version", API_VERSION)
+        for name, value in SECURITY_HEADERS.items():
+            response.headers.setdefault(name, value)
         return response
 
     api = APIRouter(prefix=f"/api/{API_VERSION}", tags=["data"])
@@ -95,7 +106,7 @@ def create_app(db_path: str | None = None, base_url: str = "http://127.0.0.1:800
         if rows is None:
             raise HTTPException(404, "no such version")
         body, media = importers.render(rows, json.loads(d["schema_json"]), format)
-        service.log_download(store, ds_id, format, bool(request.headers.get("x-api-key")))
+        service.log_download(store, ds_id, format, service.key_user(store, request.headers.get("x-api-key")) is not None)
         return Response(body, media_type=media)
 
     app.include_router(api)
@@ -115,6 +126,7 @@ def create_app(db_path: str | None = None, base_url: str = "http://127.0.0.1:800
 
     def page(request: Request, name: str, **ctx) -> HTMLResponse:
         lang = request.query_params.get("lang") or request.cookies.get("odp_lang") or "pl"
+        lang = lang if lang in STRINGS else "pl"
         ctx.update(request=request, user=user_of(request), lang=lang, t=lambda k: t(k, lang),
                    announcement=store.setting("announcement"), catalog_title=CATALOG_TITLE)
         return templates.TemplateResponse(request, name, ctx)
@@ -157,13 +169,11 @@ def create_app(db_path: str | None = None, base_url: str = "http://127.0.0.1:800
             vals = [(str(r.get(label)), r.get(numeric[0]) or 0) for r in rows[:12]]
             top = max((v for _, v in vals), default=0) or 1
             chart = {"field": numeric[0], "label": label, "bars": [(n, v, 100 * v / top) for n, v in vals]}
-        geojson = importers.render(rows, schema, "geojson")[0].decode() if d["geo"] else None
-        with store.tx() as con:
-            atts = [dict(r) for r in con.execute("SELECT * FROM attachments WHERE dataset_id=?", (ds_id,))]
-            links = [dict(r) for r in con.execute("SELECT * FROM links WHERE dataset_id=?", (ds_id,))]
+        geojson = json.loads(importers.render(rows, schema, "geojson")[0]) if d["geo"] else None
         return page(request, "dataset.html", d=d, schema=schema, rows=rows[:50], total=len(rows), chart=chart,
-                    geojson=geojson, versions=service.versions(store, ds_id), stale=service.staleness(d),
-                    keywords=json.loads(d["keywords"]), attachments=atts, links=links)
+                    geojson=geojson, map_style=service.map_style(store, ds_id), versions=service.versions(store, ds_id),
+                    stale=service.staleness(d), keywords=json.loads(d["keywords"]),
+                    attachments=service.attachments(store, ds_id), links=service.links(store, ds_id))
 
     @app.get("/register", response_class=HTMLResponse, include_in_schema=False)
     def register_form(request: Request):
@@ -212,7 +222,7 @@ def create_app(db_path: str | None = None, base_url: str = "http://127.0.0.1:800
         if token:
             service.sign_out(store, token)
         r = RedirectResponse("/", status_code=303)
-        r.delete_cookie("odp_session")
+        r.delete_cookie("odp_session", httponly=True, samesite="strict", secure=app.state.base.startswith("https"))
         return r
 
     @app.get("/account", response_class=HTMLResponse, include_in_schema=False)
@@ -245,7 +255,7 @@ def create_app(db_path: str | None = None, base_url: str = "http://127.0.0.1:800
             raise HTTPException(400, "type DELETE to confirm")
         service.delete_account(store, u["id"])
         r = RedirectResponse("/", status_code=303)
-        r.delete_cookie("odp_session")
+        r.delete_cookie("odp_session", httponly=True, samesite="strict", secure=app.state.base.startswith("https"))
         return r
 
     @app.get("/admin", response_class=HTMLResponse, include_in_schema=False)
@@ -255,7 +265,8 @@ def create_app(db_path: str | None = None, base_url: str = "http://127.0.0.1:800
         history = {d["id"]: service.import_history(store, d["id"])[:5] for d in ds}
         logins = service.login_history(store, 50) if u["role"] == "admin" else []
         return page(request, "admin.html", datasets=ds, history=history, logins=logins,
-                    filters=json.loads(store.setting("filters")))
+                    filters=json.loads(store.setting("filters")),
+                    styles={d["id"]: service.map_style(store, d["id"]) for d in ds if d["geo"]})
 
     @app.post("/admin/import", include_in_schema=False)
     async def admin_import(request: Request, ds_id: str = Form(...), file: UploadFile = File(...)):
@@ -266,9 +277,7 @@ def create_app(db_path: str | None = None, base_url: str = "http://127.0.0.1:800
             rows = importers.parse(content, fmt)
             result = service.import_rows(store, ds_id, rows, mode="manual", source_format=fmt)
         except importers.ImportFailed as e:
-            with store.tx() as con:
-                con.execute("INSERT INTO imports(dataset_id, at, mode, ok, errors_json) VALUES (?, datetime('now'), 'manual', 0, ?)",
-                            (ds_id, json.dumps(e.errors, ensure_ascii=False)))
+            service.record_failed_import(store, ds_id, "manual", e.errors)
             result = {"ok": False, "errors": e.errors}
         return page(request, "import_result.html", ds_id=ds_id, result=result)
 
@@ -277,6 +286,17 @@ def create_app(db_path: str | None = None, base_url: str = "http://127.0.0.1:800
         need(request, ("admin",))
         service.set_requires_key(store, ds_id, bool(requires_key))
         service.archive_dataset(store, ds_id, bool(archived))
+        return RedirectResponse("/admin", status_code=303)
+
+    @app.post("/admin/dataset/{ds_id}/map-style", include_in_schema=False)
+    def admin_map_style(request: Request, ds_id: str, color: str = Form(...), weight: int = Form(...),
+                        radius: int = Form(...)):
+        """OPZ 1.62: the administrator sets the basic drawing rules of a spatial dataset."""
+        need(request, ("admin",))
+        try:
+            service.set_map_style(store, ds_id, color=color, weight=weight, radius=radius)
+        except service.Refused as e:
+            raise HTTPException(400, str(e)) from None
         return RedirectResponse("/admin", status_code=303)
 
     @app.post("/admin/filters", include_in_schema=False)
@@ -298,6 +318,8 @@ def create_app(db_path: str | None = None, base_url: str = "http://127.0.0.1:800
                          subject: str = Form(""), status: str = Form(""), document_url: str = Form("")):
         """OPZ 1.65.5: an internal user adds a new resolution by hand; it becomes a new version of the set."""
         need(request, ("admin", "internal"))
+        if document_url.strip() and not document_url.strip().startswith(("https://", "http://")):
+            raise HTTPException(400, "the document address must start with https:// or http://")
         rows = service.version_rows(store, "uchwaly-rady-miejskiej") or []
         rows = [{k: ("" if v is None else str(v)) for k, v in r.items()} for r in rows]
         rows.append({"number": number, "adopted_on": adopted_on, "title": title, "subject": subject, "status": status,
@@ -353,19 +375,7 @@ def create_app(db_path: str | None = None, base_url: str = "http://127.0.0.1:800
             rows, files = importers.resolution_package(await file.read())
         except importers.ImportFailed as e:
             return page(request, "import_result.html", ds_id="uchwaly-rady-miejskiej", result={"ok": False, "errors": e.errors})
-        folder = app.state.uploads / "resolutions"
-        folder.mkdir(parents=True, exist_ok=True)
-        with store.tx() as con:
-            for number, data in files.items():
-                name = re.sub(r"[^A-Za-z0-9._-]+", "_", number) + ".pdf"
-                (folder / name).write_bytes(data)
-                url = f"/files/resolutions/{name}"
-                con.execute("INSERT INTO attachments(dataset_id, record_key, name, kind, url, sha256) VALUES (?,?,?,?,?,?)",
-                            ("uchwaly-rady-miejskiej", number, name, "PDF/A", url, hashlib.sha256(data).hexdigest()))
-                for r in rows:
-                    if r.get("number") == number:
-                        r["document_url"] = url
-        result = service.import_rows(store, "uchwaly-rady-miejskiej", rows, mode="package", source_format="zip")
+        result = service.import_resolution_package(store, app.state.uploads / "resolutions", rows, files)
         return page(request, "import_result.html", ds_id="uchwaly-rady-miejskiej", result=result)
 
     @app.get("/files/resolutions/{name}", include_in_schema=False)

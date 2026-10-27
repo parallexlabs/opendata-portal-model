@@ -37,28 +37,39 @@
 {% endif %}
 {% if geojson %}
 <h2>{{ t('map') }}</h2>
+<div class="map-wrap">
 <div id="map" class="map" role="region" aria-label="{{ t('map') }}"></div>
-<form id="wms" class="wms"><label for="wms-url">WMS / WMTS URL</label><input id="wms-url" type="url" placeholder="https://.../wms"><label for="wms-layers">Layers</label><input id="wms-layers"><button type="submit">+</button></form>
+<details class="map-overlay"><summary>{{ t('external_layer') }}</summary>
+<form id="wms"><label for="wms-url">{{ t('wms_url') }}</label><input id="wms-url" type="url" placeholder="https://.../wms" required><label for="wms-layers">{{ t('wms_layers') }}</label><input id="wms-layers" required><button type="submit">{{ t('wms_add') }}</button></form>
+</details>
+</div>
 <script>
-  const data = {{ geojson|safe }};
+  const data = {{ geojson|tojson }};
+  const style = {{ map_style|tojson }};
   const map = L.map('map');
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19, attribution: '&copy; OpenStreetMap contributors'}).addTo(map);
-  const layer = L.geoJSON(data, {pointToLayer: (f, ll) => L.circleMarker(ll, {radius: 7, color: '#0b5394', weight: 2}),
-    onEachFeature: (f, l) => l.bindPopup(Object.entries(f.properties).map(([k, v]) => k + ': ' + v).join('<br>'))}).addTo(map);
-  map.fitBounds(layer.getBounds(), {maxZoom: 13});
+  const popup = (props) => { const box = document.createElement('div');
+    for (const [k, v] of Object.entries(props || {})) { const line = document.createElement('div'); line.textContent = k + ': ' + v; box.appendChild(line); }
+    return box; };
+  const layer = L.geoJSON(data, {style: () => ({color: style.color, weight: style.weight}),
+    pointToLayer: (f, ll) => L.circleMarker(ll, {radius: style.radius, color: style.color, weight: style.weight}),
+    onEachFeature: (f, l) => l.bindPopup(popup(f.properties))}).addTo(map);
+  if (layer.getLayers().length) map.fitBounds(layer.getBounds(), {maxZoom: 13}); else map.setView([49.82, 19.04], 12);
+  const overlay = document.querySelector('.map-overlay');
+  L.DomEvent.disableClickPropagation(overlay); L.DomEvent.disableScrollPropagation(overlay);
   document.getElementById('wms').addEventListener('submit', (e) => { e.preventDefault();
     const url = document.getElementById('wms-url').value; const layers = document.getElementById('wms-layers').value;
-    if (url) L.tileLayer.wms(url, {layers, format: 'image/png', transparent: true}).addTo(map); });
+    L.tileLayer.wms(url, {layers, format: 'image/png', transparent: true}).addTo(map); });
 </script>
 {% endif %}
 <h2>{{ t('preview') }} ({{ rows|length }} / {{ total }})</h2>
 <div class="table-wrap" tabindex="0" role="region" aria-label="{{ t('preview') }}">
 <table>
   <thead><tr>{% for f in schema %}<th scope="col">{{ f.name }}</th>{% endfor %}</tr></thead>
-  <tbody>{% for r in rows %}<tr>{% for f in schema %}<td>{% if f.name == 'document_url' and r[f.name] %}<a href="{{ r[f.name] }}">PDF</a>{% else %}{{ r[f.name] if r[f.name] is not none else '' }}{% endif %}</td>{% endfor %}</tr>{% endfor %}</tbody>
+  <tbody>{% for r in rows %}<tr>{% for f in schema %}<td>{% if f.name == 'document_url' and r[f.name]|href %}<a href="{{ r[f.name]|href }}">PDF</a>{% else %}{{ r[f.name] if r[f.name] is not none else '' }}{% endif %}</td>{% endfor %}</tr>{% endfor %}</tbody>
 </table>
 </div>
-{% if links %}<h2>{{ t('links') }}</h2><ul>{% for l in links %}<li><a href="{{ l.url }}">{{ l.title }}</a></li>{% endfor %}</ul>{% endif %}
+{% if links %}<h2>{{ t('links') }}</h2><ul>{% for l in links %}<li><a href="{{ l.url|href }}">{{ l.title }}</a></li>{% endfor %}</ul>{% endif %}
 <h2>{{ t('versions') }}</h2>
 <ul>{% for v in versions %}<li>v{{ v.number }} · {{ v.created_at[:16].replace('T', ' ') }} · <a href="/api/1.0/datasets/{{ d.id }}/data?format=csv&amp;version={{ v.number }}">CSV</a></li>{% endfor %}</ul>
 {% endblock %}

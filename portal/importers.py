@@ -127,6 +127,9 @@ RESOLUTION_SCHEMA = [
 ]
 
 
+MAX_ATTACHMENT = 50_000_000
+
+
 def resolution_package(content: bytes) -> tuple[list[dict], dict[str, bytes]]:
     """OPZ 1.3, 1.65: a ZIP with resolutions.csv and, for the 1990 to 2010 records, PDF/A files named in its
     'attachment' column; later records carry metadata and a link only. Returns rows and the attached files."""
@@ -144,6 +147,9 @@ def resolution_package(content: bytes) -> tuple[list[dict], dict[str, bytes]]:
         if att:
             if att not in names:
                 errors.append({"row": i, "field": "attachment", "message": f"file {att} not in the package"})
+                continue
+            if z.getinfo(att).file_size > MAX_ATTACHMENT:
+                errors.append({"row": i, "field": "attachment", "message": f"{att} is over {MAX_ATTACHMENT // 1_000_000} MB"})
                 continue
             data = z.read(att)
             if not data.startswith(b"%PDF"):

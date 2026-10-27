@@ -23,7 +23,9 @@ STRINGS = {
         "enable_totp": "Włącz logowanie dwuskładnikowe (TOTP)", "delete_account": "Usuń konto",
         "requires_key": "Wymaga klucza API", "formats": "Formaty", "language": "Język", "attachments": "Załączniki",
         "links": "Odnośniki", "frequency": "Częstotliwość aktualizacji", "licence": "Licencja", "source": "Źródło",
-        "modified": "Ostatnia aktualizacja",
+        "modified": "Ostatnia aktualizacja", "external_layer": "Warstwa zewnętrzna (WMS lub WMTS)",
+        "wms_url": "Adres usługi", "wms_layers": "Warstwy", "wms_add": "Dodaj warstwę", "map_style": "Styl mapy",
+        "colour": "Kolor", "line_weight": "Grubość linii", "point_radius": "Wielkość punktu", "save": "Zapisz",
     },
     "en": {
         "skip": "Skip to content", "home": "Home", "catalog": "Data catalog", "api": "API",
@@ -47,7 +49,9 @@ STRINGS = {
         "enable_totp": "Turn on two-factor sign-in (TOTP)", "delete_account": "Delete my account",
         "requires_key": "Needs an API key", "formats": "Formats", "language": "Language", "attachments": "Attachments",
         "links": "Links", "frequency": "Update frequency", "licence": "Licence", "source": "Source",
-        "modified": "Last updated",
+        "modified": "Last updated", "external_layer": "External layer (WMS or WMTS)",
+        "wms_url": "Service address", "wms_layers": "Layers", "wms_add": "Add layer", "map_style": "Map style",
+        "colour": "Colour", "line_weight": "Line width", "point_radius": "Point size", "save": "Save",
     },
 }
 

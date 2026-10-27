@@ -29,6 +29,14 @@
   <button type="submit">Dodaj</button>
 </form>
 {% if user.role == 'admin' %}
+<h2>{{ t('map_style') }}</h2>
+{% for d in datasets if d.geo %}{% set s = styles[d.id] %}
+<form method="post" action="/admin/dataset/{{ d.id }}/map-style" class="form"><fieldset><legend>{{ d.title }}</legend>
+  <div><label for="color-{{ loop.index }}">{{ t('colour') }}</label><input id="color-{{ loop.index }}" name="color" type="color" value="{{ s.color }}"></div>
+  <div><label for="weight-{{ loop.index }}">{{ t('line_weight') }}</label><input id="weight-{{ loop.index }}" name="weight" type="number" min="1" max="10" value="{{ s.weight }}"></div>
+  <div><label for="radius-{{ loop.index }}">{{ t('point_radius') }}</label><input id="radius-{{ loop.index }}" name="radius" type="number" min="2" max="20" value="{{ s.radius }}"></div>
+  <button type="submit">{{ t('save') }}</button></fieldset></form>
+{% endfor %}
 <h2>Catalog filters</h2>
 <form method="post" action="/admin/filters">{% for k in ['category', 'publisher', 'keyword', 'format'] %}<label><input type="checkbox" name="{{ k }}" value="1" {% if filters[k] %}checked{% endif %}> {{ k }}</label>{% endfor %}<button type="submit">Save</button></form>
 <h2>Announcement</h2>

@@ -7,7 +7,6 @@ written to the import history. The fetcher is a parameter, so tests and air-gapp
 
 from __future__ import annotations
 
-import json
 import threading
 import urllib.request
 from collections.abc import Callable
@@ -48,10 +47,7 @@ def run_due(store: Store, fetch: Fetcher = http_fetch, at: datetime | None = Non
             result = service.import_rows(store, d["id"], rows, mode="scheduled", source_format=fmt)
         except (importers.ImportFailed, OSError, ValueError) as e:
             errors = getattr(e, "errors", [{"row": None, "field": None, "message": f"source unavailable: {e}"}])
-            with store.tx() as con:
-                con.execute("INSERT INTO imports(dataset_id, at, mode, ok, errors_json) VALUES (?,?,?,?,?)",
-                            (d["id"], datetime.now(timezone.utc).isoformat(timespec="seconds"), "scheduled", 0,
-                             json.dumps(errors, ensure_ascii=False)))
+            service.record_failed_import(store, d["id"], "scheduled", errors)
             result = {"ok": False, "errors": errors}
         results.append({"dataset": d["id"]} | result)
     return results

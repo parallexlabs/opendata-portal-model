@@ -260,7 +260,7 @@ def test_req_1_48_and_1_57_table_chart_and_map(client):
     assert "L.tileLayer.wms" in page, "an external WMS or WMTS layer can be added (1.63.5)"
 
 
-def test_req_1_65_resolutions_package_and_manual_entry(app):
+def test_req_1_3_and_1_65_resolutions_package_and_manual_entry(app):
     c = admin_client(app, "internal")
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as z:
@@ -328,3 +328,164 @@ def test_req_1_50_accessibility_statement_and_privacy_policy(client):
     assert "Deklaracja dostępności" in client.get("/deklaracja-dostepnosci").text
     assert "Polityka prywatności" in client.get("/polityka-prywatnosci").text
     assert "/deklaracja-dostepnosci" in client.get("/").text
+
+
+def test_req_1_43_a_file_that_does_not_parse_counts_as_a_failed_import(app):
+    c = admin_client(app)
+    r = c.post("/admin/import", data={"ds_id": BUDGET}, files={"file": ("zly.json", b"{not json", "application/json")})
+    assert r.status_code == 200 and "bad JSON" in r.text
+    today = datetime.now(timezone.utc).date().isoformat()
+    rows = list(csv.DictReader(io.StringIO(c.get(f"/admin/report.csv?start={today}&end={today}").text)))
+    budget = next(r for r in rows if r["dataset"] == BUDGET)
+    assert budget["failed_imports"] == "1"
+
+
+def test_req_1_58_1_59_1_61_map_window_base_layer_and_controls_over_the_map(client):
+    html = client.get(f"/datasets/{AIR}").text
+    assert re.search(r'<div class="map-wrap">\s*<div id="map"[^>]*></div>\s*<details class="map-overlay">', html)
+    assert "tile.openstreetmap.org" in html and "OpenStreetMap contributors" in html
+    rule = re.search(r"\.map-overlay \{([^}]*)\}", client.get("/static/style.css").text).group(1)
+    assert "position: absolute" in rule and "z-index: 1000" in rule
+
+
+def test_req_1_62_admin_sets_colour_line_width_and_point_size(app):
+    c = admin_client(app)
+    r = c.post(f"/admin/dataset/{AIR}/map-style", data={"color": "#AA3300", "weight": "4", "radius": "9"},
+               follow_redirects=False)
+    assert r.status_code == 303
+    style = json.loads(re.search(r"const style = (\{.*?\});", c.get(f"/datasets/{AIR}").text).group(1))
+    assert style == {"color": "#aa3300", "weight": 4, "radius": 9}
+    for bad in ({"color": "red", "weight": "4", "radius": "9"}, {"color": "#aa3300", "weight": "40", "radius": "9"}):
+        assert c.post(f"/admin/dataset/{AIR}/map-style", data=bad).status_code == 400
+    assert c.post("/admin/dataset/no-such-set/map-style", data={"color": "#aa3300", "weight": "4", "radius": "9"}).status_code == 400
+    internal = admin_client(app, "internal")
+    assert internal.post(f"/admin/dataset/{AIR}/map-style", data={"color": "#000000", "weight": "1", "radius": "2"}).status_code == 403
+
+
+def test_req_1_63_5_external_wms_or_wmts_layer(client):
+    # The page wires the form to Leaflet's WMS layer; drawing a live service is a browser check (README).
+    html = client.get(f"/datasets/{AIR}").text
+    assert 'for="wms-url"' in html and 'for="wms-layers"' in html
+    assert "L.tileLayer.wms(url, {layers" in html
+
+
+def test_req_2_5_presentation_logic_and_storage_are_separate_layers():
+    import ast
+    from pathlib import Path
+    root = Path(__file__).parent.parent / "portal"
+
+    def imported(name):
+        out = set()
+        for node in ast.walk(ast.parse((root / f"{name}.py").read_text())):
+            if isinstance(node, ast.Import):
+                out |= {a.name.split(".")[0] for a in node.names}
+            elif isinstance(node, ast.ImportFrom) and node.level == 0:
+                out.add((node.module or "").split(".")[0])
+        return out
+
+    app_src = (root / "app.py").read_text()
+    assert "sqlite3" not in imported("app") and ".execute(" not in app_src and "store.tx(" not in app_src
+    for module in ("service", "importers", "dcat", "scheduler", "security", "db"):
+        assert not imported(module) & {"fastapi", "starlette", "jinja2"}, module
+
+
+def test_req_2_6_every_string_in_every_language_and_unknown_languages_fall_back(client):
+    from pathlib import Path
+    from portal.i18n import STRINGS
+    keys = set(STRINGS["pl"])
+    assert all(set(table) == keys for table in STRINGS.values())
+    used = set()
+    for f in (Path(__file__).parent.parent / "portal" / "templates").glob("*.html"):
+        used |= set(re.findall(r"(?<![\w.])t\('([a-z_]+)'\)", f.read_text()))
+    assert used <= keys, used - keys
+    assert '<html lang="pl"' in client.get("/?lang=xx").text
+    en = client.get("/?lang=en").text
+    assert '<html lang="en"' in en and STRINGS["en"]["catalog"] in en
+
+
+def test_req_2_10_session_cookie_flags_sign_out_and_expiry(tmp_path):
+    app = create_app(":memory:", base_url="https://dane.example.invalid", upload_dir=str(tmp_path))
+    store = app.state.store
+    service.create_staff(store, email="s@example.invalid", name="s", password=STRONG, role="internal")
+    c = TestClient(app, base_url="https://testserver")
+
+    def sign_in():
+        r = c.post("/login", data={"email": "s@example.invalid", "password": STRONG}, follow_redirects=False)
+        cookie = r.headers["set-cookie"]
+        low = cookie.lower()
+        assert "httponly" in low and "samesite=strict" in low and "secure" in low
+        return re.search(r"odp_session=([^;]+)", cookie).group(1)
+
+    token = sign_in()
+    assert service.session_user(store, token) is not None
+    with store.tx() as con:
+        assert token not in [row[0] for row in con.execute("SELECT token_hash FROM sessions")]
+    c.post("/logout", follow_redirects=False)
+    assert service.session_user(store, token) is None
+    token = sign_in()
+    with store.tx() as con:
+        con.execute("UPDATE sessions SET expires_at=?", ((datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(timespec="seconds"),))
+    assert service.session_user(store, token) is None
+
+
+def test_security_headers_on_pages_api_and_catalog(client):
+    for path in ("/", "/api/1.0/datasets", "/catalog.ttl"):
+        h = client.get(path).headers
+        assert h["X-Content-Type-Options"] == "nosniff" and h["X-Frame-Options"] == "DENY"
+        assert h["Referrer-Policy"] == "same-origin"
+
+
+def test_req_1_8_invented_api_keys_do_not_escape_the_rate_limit(tmp_path):
+    app = create_app(":memory:", rate=3, per=60, upload_dir=str(tmp_path))
+    c = TestClient(app)
+    codes = [c.get("/api/1.0/datasets", headers={"X-API-Key": f"invented-{i}"}).status_code for i in range(4)]
+    assert codes == [200, 200, 200, 429]
+    uid = service.create_staff(app.state.store, email="k@example.invalid", name="k", password=STRONG, role="apikey")
+    key = service.issue_key(app.state.store, uid)
+    assert c.get("/api/1.0/datasets", headers={"X-API-Key": key}).status_code == 200
+
+
+def test_map_data_and_popups_cannot_carry_script(app):
+    payload = "</script><script>alert(1)</script>"
+    rows = [{k: ("" if v is None else str(v)) for k, v in r.items()} for r in service.version_rows(app.state.store, AIR)]
+    rows[0]["station"] = payload
+    assert service.import_rows(app.state.store, AIR, rows, mode="manual", source_format="test")["ok"]
+    html = TestClient(app).get(f"/datasets/{AIR}").text
+    assert payload not in html and "\\u003c/script\\u003e" in html
+    assert "bindPopup(popup(" in html and "innerHTML" not in html
+
+
+def test_links_and_document_addresses_only_render_web_links(app):
+    from portal.app import safe_href
+    c = admin_client(app, "internal")
+    bad = {"number": "X/1/2026", "adopted_on": "2026-10-01", "title": "T", "document_url": "javascript:alert(1)"}
+    assert c.post("/admin/resolutions", data=bad).status_code == 400
+    rows = [{k: ("" if v is None else str(v)) for k, v in r.items()} for r in service.version_rows(app.state.store, RES)]
+    rows.append({"number": "X/2/2026", "adopted_on": "2026-10-02", "title": "T2", "subject": "", "status": "",
+                 "document_url": "javascript:alert(2)"})
+    assert service.import_rows(app.state.store, RES, rows, mode="manual", source_format="test")["ok"]
+    html = c.get(f"/datasets/{RES}").text
+    assert "javascript:alert(2)" in html and 'href="javascript:' not in html
+    with pytest.raises(service.Refused):
+        service.add_link(app.state.store, RES, "zly", "javascript:alert(3)")
+    assert safe_href("https://a.example/x") == "https://a.example/x" and safe_href("/files/resolutions/a.pdf")
+    assert safe_href("javascript:alert(1)") == "" and safe_href("//evil.example") == "" and safe_href(" JAVASCRIPT:x") == ""
+
+
+def test_req_1_3_package_members_over_the_size_cap_are_refused(monkeypatch):
+    monkeypatch.setattr(importers, "MAX_ATTACHMENT", 10)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("resolutions.csv", "number,adopted_on,title,subject,status,document_url,attachment\n"
+                   "I/1/1991,1991-01-01,A,,,,big.pdf\n")
+        z.writestr("big.pdf", b"%PDF-1.4 " + b"x" * 40)
+    with pytest.raises(importers.ImportFailed) as e:
+        importers.resolution_package(buf.getvalue())
+    assert "over" in e.value.errors[0]["message"]
+
+
+def test_sample_data_is_marked_synthetic_on_every_page(client):
+    from portal.i18n import STRINGS
+    for path in ("/", "/datasets", f"/datasets/{AIR}", f"/datasets/{BUDGET}", f"/datasets/{RES}", "/register", "/login",
+                 "/deklaracja-dostepnosci", "/polityka-prywatnosci"):
+        assert STRINGS["pl"]["synthetic"] in client.get(path).text, path
